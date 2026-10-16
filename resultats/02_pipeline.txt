@@ -1,0 +1,9 @@
+
+======================================================================
+RÉSUMÉ
+======================================================================
+Rayon de compromission direct : 31.04 -> 19.57
+Hôtes critiques directement exposés : 2 -> 2
+Règles de pare-feu : 9 -> 13
+Capture pcap : 6/6 mouvements latéraux autorisés (hérité) -> 6/6 bloqués (adaptatif)
+Continuité métier : 40/40 flux légitimes préservés
