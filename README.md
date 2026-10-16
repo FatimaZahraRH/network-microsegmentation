@@ -10,13 +10,13 @@
 
 ---
 
-## 🎯 Le problème traité
+##  Le problème traité
 
 Trois questions pratiques mal couvertes par la littérature de vulgarisation sur la micro-segmentation : **comment mesurer objectivement le gain de sécurité obtenu**, **quelle granularité appliquer où**, et surtout **une politique qui réduit l'exposition casse-t-elle le fonctionnement métier normal ?** Ce projet répond aux trois avec une politique fondée sur des graphes, une pondération contextuelle par criticité, et une **validation sur une capture réseau (.pcap) simulée** plutôt qu'un raisonnement purement théorique.
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 Topologie réseau héritée (synthétique)
@@ -38,7 +38,7 @@ Politique de segmentation adaptative (granularité + exceptions port-précises)
 
 ---
 
-## 📂 Structure du projet
+##  Structure du projet
 
 ```
 network-microsegmentation/
@@ -69,7 +69,7 @@ network-microsegmentation/
 
 ---
 
-## 🚀 Installation et démarrage rapide
+## Installation et démarrage rapide
 
 ```bash
 git clone https://github.com/FatimaZahraRH/network-microsegmentation.git
@@ -91,7 +91,7 @@ pytest tests/ -v
 
 ---
 
-## 📊 Résultats mesurés
+##  Résultats mesurés
 
 ### Le résultat principal : validation sur capture réseau simulée
 
@@ -122,7 +122,7 @@ pytest tests/ -v
 
 ---
 
-## 🧠 Deux défauts de conception trouvés et corrigés grâce à la validation pcap
+##  Deux défauts de conception trouvés et corrigés grâce à la validation pcap
 
 Le vrai intérêt d'ajouter une validation sur trafic simulé plutôt que de s'arrêter à un raisonnement par graphe : elle a activement révélé deux défauts de conception qui seraient passés inaperçus autrement.
 
@@ -133,7 +133,7 @@ Voir `docs/methodology_notes.md` pour le détail complet.
 
 ---
 
-## ⚠️ Limites assumées
+## Limites assumées
 
 - Topologie et capture réseau **synthétiques**.
 - Modèle de flux légitimes simplifié (types + ports codés en dur).
@@ -143,7 +143,7 @@ Voir `docs/methodology_notes.md` pour le détail complet.
 
 ---
 
-## 🛠️ Stack technique
+##  Stack technique
 
 Python 3.12 · networkx (graphes) · scapy (génération/lecture pcap) · Plotly (dashboard) · pytest
 
