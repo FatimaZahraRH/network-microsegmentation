@@ -53,7 +53,7 @@ def run_full_comparison(topology: NetworkTopology, pcap_output_path: str = "capt
     segmented_exposure = compute_exposure(segmented_graph, CRITICAL_TYPES)
     segmented_rules = generate_rules_from_graph(segmented_graph, policy.segment_by_host)
 
-    # Validation par capture réseau réelle (pcap) : génère un trafic
+    # Validation par capture réseau simulée (pcap) : génère un trafic
     # simulé (métier légitime + tentatives de mouvement latéral ciblées par
     # reconnaissance), l'écrit dans un vrai fichier .pcap, le relit comme le
     # ferait un analyste avec Wireshark, puis confronte chaque flux observé

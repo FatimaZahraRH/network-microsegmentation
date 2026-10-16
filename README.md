@@ -1,12 +1,12 @@
 # Network Microsegmentation — Segmentation Adaptative, Validée sur Capture Réseau Simulée
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white) ![Tests](https://img.shields.io/badge/tests-29%20passed-brightgreen) ![Licence](https://img.shields.io/badge/licence-MIT-blue)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white) ![Tests](https://img.shields.io/badge/tests-32%20passed-brightgreen) ![Licence](https://img.shields.io/badge/licence-MIT-blue)
 
 **Simulateur de micro-segmentation réseau à granularité adaptative, fondé sur la recherche académique, avec génération de règles de pare-feu et validation sur un fichier de capture réseau (.pcap généré avec scapy, ouvrable dans Wireshark).**
 
 > **En bref** — un réseau « à plat » laisse un attaquant rebondir de machine en machine. Ce projet modélise un réseau hérité sous forme de graphe, calcule une politique de micro-segmentation adaptée à la criticité de chaque actif, en tire des règles de pare-feu précises au port près, puis rejoue un vrai fichier `.pcap` (ouvrable dans Wireshark) pour vérifier que la politique bloque l'attaque sans casser le trafic métier.
 >
-> **6/6 mouvements latéraux bloqués · 40/40 flux métier préservés** · 2 défauts de conception révélés par la capture et corrigés · 29 tests.
+> **6/6 mouvements latéraux bloqués · 40/40 flux métier préservés** · rayon de compromission direct **31,0 → 19,6** · 3 défauts de conception trouvés et corrigés · 32 tests.
 
 ---
 
@@ -62,7 +62,7 @@ network-microsegmentation/
 │       └── report_generator.py   # rapport Markdown
 ├── scripts/
 │   └── run_pipeline.py           # pipeline complet
-├── tests/                        # 29 tests unitaires
+├── tests/                        # 32 tests unitaires
 └── docs/
     └── methodology_notes.md      # références, 2 bugs trouvés, limites assumées
 ```
@@ -108,26 +108,31 @@ Un trafic a été simulé (flux métier légitimes + tentatives de mouvement lat
 
 | Métrique | Réseau hérité | Segmentation adaptative |
 |---|---|---|
-| Hôtes critiques directement exposés | 2 | 2 (accès désormais précisément scopé par port) |
-| Règles de pare-feu | 9 (larges, peu précises) | 14 (plus nombreuses mais port-précises) |
+| Rayon de compromission direct moyen (hôtes joignables en un saut) | 31,04 | **19,57** (−37 %) |
+| … depuis un poste utilisateur | 32,3 | **12,0** (plus de trafic poste à poste) |
+| Hôtes critiques directement joignables depuis un poste | 2 | 2 (les contrôleurs de domaine, désormais sur Kerberos/88 uniquement) |
+| Règles de pare-feu | 9 (larges, peu précises) | 13 (plus nombreuses mais plus précises) |
+
+Le rayon des serveurs applicatifs et des contrôleurs de domaine ne baisse pas : ils servent légitimement tous les postes. Leur protection vient du filtrage **par port**, que le graphe (agrégé par type d'hôte) ne voit pas et que la validation pcap mesure.
 
 ### Tests unitaires
 
-29 tests couvrant : la génération de topologie, les métriques d'exposition, le moteur de segmentation adaptative, le générateur de règles, et le module pcap complet (génération, lecture, validation).
+32 tests couvrant : la génération de topologie, les métriques d'exposition, le moteur de segmentation adaptative, le générateur de règles, le module pcap complet (génération, lecture, validation), et la propriété qu'une segmentation ne fait que **retirer** des connexions (défaut n°3).
 
 ```bash
 pytest tests/ -v
-# 29 passed
+# 32 passed
 ```
 
 ---
 
-##  Deux défauts de conception trouvés et corrigés grâce à la validation pcap
+##  Trois défauts de conception trouvés et corrigés
 
-Le vrai intérêt d'ajouter une validation sur trafic simulé plutôt que de s'arrêter à un raisonnement par graphe : elle a activement révélé deux défauts de conception qui seraient passés inaperçus autrement.
+Le vrai intérêt d'ajouter une validation sur trafic simulé plutôt que de s'arrêter à un raisonnement par graphe : elle a révélé les deux premiers défauts. Le troisième a été trouvé en relisant les métriques du pipeline.
 
 1. **Isolement total des actifs critiques** : la première version de la politique bloquait 21 des 40 flux métier légitimes (authentification, requêtes base de données) en isolant complètement les actifs critiques. Corrigé par des exceptions point-à-point explicites.
 2. **Confusion de port** : cette première correction, elle, autorisait n'importe quel port dès lors que la paire de types était légitime -- une attaque SMB/445 devenait indiscernable d'une authentification Kerberos/88 légitime vers le même contrôleur de domaine. Corrigé en rendant la vérification précise par port, pas seulement par type d'hôte.
+3. **La segmentation ajoutait des connexions** : le rayon de compromission direct *augmentait* après segmentation (14,91 → 33,09). Le graphe segmenté était construit sur toutes les paires d'hôtes au lieu de filtrer le réseau hérité, et laissait les postes utilisateurs communiquer entre eux. En parallèle, le réseau hérité ne reliait que 3 hôtes de chaque côté entre deux zones routées, contrairement à sa propre description (« passerelles larges »), si bien que la plupart des flux métier légitimes n'y étaient même pas possibles. Corrigé : passerelles inter-zones réellement larges dans le réseau hérité, politique appliquée comme un **filtre** sur les connexions existantes, et trafic poste à poste interdit. Trois tests empêchent désormais une régression.
 
 Voir `docs/methodology_notes.md` pour le détail complet.
 

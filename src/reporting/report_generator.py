@@ -18,12 +18,17 @@ def generate_report(comparison: SegmentationComparison) -> str:
 
     lines.append("## Synthèse")
     lines.append(
-        f"- **Rayon de compromission direct réduit pour les actifs critiques : "
-        f"{before_crit} → {after_crit} hôtes critiques directement exposés** depuis un poste utilisateur"
+        f"- **Rayon de compromission direct moyen : "
+        f"{comparison.legacy_exposure.average_direct_blast_radius} → "
+        f"{comparison.segmented_exposure.average_direct_blast_radius} hôtes** joignables en un saut"
+    )
+    lines.append(
+        f"- Hôtes critiques directement joignables depuis un poste utilisateur : {before_crit} → {after_crit} "
+        "(les contrôleurs de domaine restent joignables pour l'authentification, mais seulement sur Kerberos/88)"
     )
     lines.append(f"- **Règles de pare-feu : {len(comparison.legacy_rules)} → {len(comparison.segmented_rules)}**")
     lines.append(
-        f"- **Validation sur capture réseau réelle (pcap)** : {pv.n_lateral_allowed_by_legacy}/{pv.n_lateral_movement_attempts} "
+        f"- **Validation sur capture réseau simulée (pcap)** : {pv.n_lateral_allowed_by_legacy}/{pv.n_lateral_movement_attempts} "
         f"tentatives de mouvement latéral auraient été autorisées par le réseau hérité, "
         f"**{pv.n_lateral_blocked_by_adaptive}/{pv.n_lateral_movement_attempts} sont bloquées par la segmentation adaptative**, "
         f"tout en préservant **{pv.n_legit_flows_still_allowed_by_adaptive}/{pv.n_legit_flows_total} flux métier légitimes**.\n"
@@ -43,7 +48,7 @@ def generate_report(comparison: SegmentationComparison) -> str:
     lines.append(f"| Flux métier légitimes préservés | {pv.n_legit_flows_total}/{pv.n_legit_flows_total} | "
                   f"{pv.n_legit_flows_still_allowed_by_adaptive}/{pv.n_legit_flows_total} |")
 
-    lines.append("\n## Deux défauts trouvés et corrigés grâce à cette validation")
+    lines.append("\n## Trois défauts trouvés et corrigés")
     lines.append(
         "1. **Une première version de la politique isolait totalement les actifs critiques**, bloquant "
         "21 des 40 flux métier légitimes du test (authentification, requêtes base de données). Corrigé "
@@ -51,6 +56,11 @@ def generate_report(comparison: SegmentationComparison) -> str:
         "2. **Cette première correction, elle, autorisait alors n'importe quel port** vers un actif critique "
         "dès lors que la paire de types était légitime -- une attaque SMB/445 devenait indiscernable d'une "
         "authentification Kerberos/88. Corrigé en rendant la vérification précise par port.\n"
+        "3. **Le graphe segmenté ajoutait des connexions au lieu d'en retirer** : il était construit sur toutes "
+        "les paires d'hôtes plutôt qu'en filtrant le réseau hérité, et laissait les postes utilisateurs "
+        "communiquer entre eux. Le rayon de compromission direct augmentait après segmentation. Corrigé en "
+        "appliquant la politique comme un filtre sur les connexions existantes et en interdisant le trafic "
+        "poste à poste.\n"
     )
 
     lines.append("## Répartition de la granularité de segmentation")
@@ -59,7 +69,7 @@ def generate_report(comparison: SegmentationComparison) -> str:
     lines.append("|---|---|---|")
     lines.append(f"| Individuelle | {granularity_counts.get('individuel', 0)} | Micro-segment dédié + exceptions point-à-point port-précises |")
     lines.append(f"| Restreinte | {granularity_counts.get('restreint', 0)} | Groupée par type dans la zone |")
-    lines.append(f"| Large | {granularity_counts.get('large', 0)} | Segment de zone entière |")
+    lines.append(f"| Large | {granularity_counts.get('large', 0)} | Segment de zone, sans trafic poste à poste |")
 
     lines.append("\n## Limite assumée : rayon de compromission transitif")
     lines.append(

@@ -71,12 +71,15 @@ def generate_legacy_topology() -> NetworkTopology:
         ("Applicatif", "Donnees"), ("Utilisateurs", "Annuaire"),
         ("Applicatif", "Annuaire"),
     ]
+    # Passerelles inter-zones LARGES : deux VLAN routés entre eux sont
+    # joignables de n'importe quel hôte à n'importe quel hôte (pas de filtrage
+    # par hôte ni par port). Une version antérieure ne reliait que 3 hôtes
+    # tirés au hasard de chaque côté, ce qui contredisait cette description
+    # et rendait la plupart des flux métier légitimes impossibles dans le
+    # réseau hérité lui-même (défaut n°3, cf. docs/methodology_notes.md).
     for zone_a, zone_b in inter_zone_pairs:
-        hosts_a, hosts_b = hosts_by_zone[zone_a], hosts_by_zone[zone_b]
-        bridge_a = _rng.sample(hosts_a, k=min(3, len(hosts_a)))
-        bridge_b = _rng.sample(hosts_b, k=min(3, len(hosts_b)))
-        for ha in bridge_a:
-            for hb in bridge_b:
+        for ha in hosts_by_zone[zone_a]:
+            for hb in hosts_by_zone[zone_b]:
                 topology.edges.append((ha.host_id, hb.host_id))
 
     return topology

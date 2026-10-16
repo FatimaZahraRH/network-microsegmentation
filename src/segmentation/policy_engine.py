@@ -51,7 +51,7 @@ _LEGITIMATE_ZONE_FLOWS = {
 # authentification Kerberos/88 légitime, puisque les deux partagent la même
 # paire de types (poste_utilisateur, controleur_domaine). Ce second défaut a
 # lui aussi été détecté en validant la politique contre un trafic réseau
-# réellement capturé (cf. src/pcap/) : une vraie règle de pare-feu filtre
+# capturé dans un pcap simulé (cf. src/pcap/) : une vraie règle de pare-feu filtre
 # par port, pas seulement par zone/segment -- corrigé ici en conséquence.
 LEGITIMATE_TYPE_FLOWS_WITH_PORTS: dict[tuple[str, str], set[int]] = {
     ("poste_utilisateur", "serveur_applicatif"): {443},
@@ -77,7 +77,7 @@ def _is_legitimate_type_pair(type_a: str, type_b: str) -> bool:
 
 def is_legitimate_flow(type_a: str, type_b: str, port: int) -> bool:
     """Vérification PRÉCISE (type de paire + port), utilisée pour valider un
-    flux réseau réel observé -- contrairement à `_is_legitimate_type_pair`,
+    flux réseau observé dans la capture -- contrairement à `_is_legitimate_type_pair`,
     utilisée uniquement pour la construction du graphe agrégé."""
     allowed_ports = LEGITIMATE_TYPE_FLOWS_WITH_PORTS.get((type_a, type_b)) or \
         LEGITIMATE_TYPE_FLOWS_WITH_PORTS.get((type_b, type_a))
@@ -111,35 +111,52 @@ def design_segmentation_policy(topology: NetworkTopology) -> SegmentationPolicy:
 
 
 def build_segmented_graph(topology: NetworkTopology, policy: SegmentationPolicy) -> nx.Graph:
-    """Reconstruit le graphe réseau en n'autorisant QUE les connexions
-    légitimes : à l'intérieur d'un même segment, entre segments dont les
-    zones ont un flux métier justifié, OU -- pour un hôte en granularité
-    individuelle -- via une exception point-à-point explicite correspondant
-    à un besoin métier réel (cf. LEGITIMATE_TYPE_FLOWS)."""
+    """Applique la politique comme un FILTRE sur les connexions existantes du
+    réseau hérité : une connexion n'est conservée que si elle existait déjà
+    ET que la politique l'autorise. Une segmentation ne fait que retirer des
+    chemins ; elle n'en crée jamais.
+
+    Règles appliquées à chaque connexion héritée :
+    - un hôte en granularité individuelle (actif critique) n'est joignable
+      que via une exception point-à-point correspondant à un besoin métier
+      reconnu (cf. LEGITIMATE_TYPE_FLOWS) ;
+    - deux postes utilisateurs (granularité « large ») ne communiquent pas
+      entre eux : le trafic poste à poste est le premier vecteur de
+      mouvement latéral et n'a pas d'usage métier dans ce modèle ;
+    - sinon, la connexion est conservée si elle reste dans un même segment
+      ou relie deux zones dont le flux métier est justifié.
+
+    Défaut n°3 corrigé (cf. docs/methodology_notes.md) : la version
+    précédente construisait le graphe segmenté sur TOUTES les paires d'hôtes
+    au lieu de filtrer le réseau hérité, et laissait les postes utilisateurs
+    communiquer librement entre eux. Elle ajoutait ainsi des connexions qui
+    n'existaient pas, et le rayon de compromission direct augmentait après
+    segmentation (14,91 -> 33,09)."""
     graph = nx.Graph()
     for host in topology.hosts:
         graph.add_node(host.host_id, host_type=host.host_type, zone=host.zone)
 
-    hosts = topology.hosts
+    host_by_id = {h.host_id: h for h in topology.hosts}
     legit_zone_pairs = {tuple(sorted(p)) for p in _LEGITIMATE_ZONE_FLOWS}
 
-    for i, h1 in enumerate(hosts):
-        for h2 in hosts[i + 1:]:
-            g1, g2 = policy.granularity_by_host[h1.host_id], policy.granularity_by_host[h2.host_id]
+    for id1, id2 in topology.edges:
+        h1, h2 = host_by_id[id1], host_by_id[id2]
+        g1, g2 = policy.granularity_by_host[id1], policy.granularity_by_host[id2]
 
-            if g1 == "individuel" or g2 == "individuel":
-                # Exception explicite : seul un besoin métier reconnu ouvre
-                # un accès point-à-point vers un actif en granularité
-                # individuelle -- tout le reste reste bloqué.
-                if _is_legitimate_type_pair(h1.host_type, h2.host_type):
-                    graph.add_edge(h1.host_id, h2.host_id)
-                continue
+        if g1 == "individuel" or g2 == "individuel":
+            if _is_legitimate_type_pair(h1.host_type, h2.host_type):
+                graph.add_edge(id1, id2)
+            continue
 
-            same_segment = policy.segment_by_host[h1.host_id] == policy.segment_by_host[h2.host_id]
-            zone_pair = tuple(sorted((h1.zone, h2.zone)))
-            legit_flow = zone_pair in legit_zone_pairs
+        if g1 == "large" and g2 == "large":
+            # Pas de trafic poste à poste.
+            continue
 
-            if same_segment or (legit_flow and h1.zone != h2.zone):
-                graph.add_edge(h1.host_id, h2.host_id)
+        same_segment = policy.segment_by_host[id1] == policy.segment_by_host[id2]
+        zone_pair = tuple(sorted((h1.zone, h2.zone)))
+        legit_flow = zone_pair in legit_zone_pairs and h1.zone != h2.zone
+
+        if same_segment or legit_flow:
+            graph.add_edge(id1, id2)
 
     return graph

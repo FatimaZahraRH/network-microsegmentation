@@ -1,5 +1,5 @@
 """Dashboard HTML statique (Plotly) présentant l'impact de la micro-segmentation
-et sa validation sur capture réseau réelle."""
+et sa validation sur capture réseau simulée."""
 from __future__ import annotations
 
 from src.evaluation.metrics import SegmentationComparison
@@ -63,7 +63,7 @@ def build_dashboard_html(comparison: SegmentationComparison, output_path: str) -
     fig.update_yaxes(title_text="Flux légitimes", range=[0, pv.n_legit_flows_total + 5], row=2, col=2)
 
     fig.update_layout(
-        title_text="Micro-segmentation Réseau Adaptative -- Validée sur capture réseau réelle (pcap)",
+        title_text="Micro-segmentation Réseau Adaptative -- Validée sur capture réseau simulée (pcap)",
         height=800, showlegend=False, template="plotly_white",
     )
 

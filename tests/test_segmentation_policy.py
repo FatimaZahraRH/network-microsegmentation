@@ -97,3 +97,28 @@ class TestFullComparison:
         comparison = run_full_comparison(topo, pcap_output_path="test_comparison.pcap")
         pv = comparison.pcap_validation
         assert pv.n_legit_flows_still_allowed_by_adaptive == pv.n_legit_flows_total
+
+
+class TestSegmentationIsAFilter:
+    """Défaut n°3 : une segmentation ne doit jamais AJOUTER de connexion."""
+
+    def test_segmented_graph_is_subset_of_legacy(self):
+        from src.network.exposure_metrics import build_graph
+        topo = generate_legacy_topology()
+        legacy = {frozenset(e) for e in build_graph(topo).edges}
+        segmented = {frozenset(e) for e in build_segmented_graph(topo, design_segmentation_policy(topo)).edges}
+        assert segmented <= legacy
+
+    def test_no_workstation_to_workstation_traffic(self):
+        topo = generate_legacy_topology()
+        graph = build_segmented_graph(topo, design_segmentation_policy(topo))
+        host_by_id = {h.host_id: h for h in topo.hosts}
+        for u, v in graph.edges:
+            assert not (host_by_id[u].host_type == "poste_utilisateur"
+                        and host_by_id[v].host_type == "poste_utilisateur")
+
+    def test_direct_blast_radius_decreases_after_segmentation(self):
+        topo = generate_legacy_topology()
+        comparison = run_full_comparison(topo, pcap_output_path="test_comparison.pcap")
+        assert (comparison.segmented_exposure.average_direct_blast_radius
+                < comparison.legacy_exposure.average_direct_blast_radius)

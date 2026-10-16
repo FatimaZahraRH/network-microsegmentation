@@ -14,24 +14,28 @@ La micro-segmentation réseau (diviser un réseau en zones isolées pour limiter
 
 ## 3. Ce que ce projet démontre
 
-Sur une topologie synthétique de 46 hôtes (5 zones), une politique de segmentation à granularité adaptative a été conçue, puis **validée sur une capture réseau réelle** (fichier `.pcap`, format libpcap standard, généré via scapy et relu comme le ferait un·e analyste avec Wireshark) :
+Sur une topologie synthétique de 46 hôtes (5 zones), une politique de segmentation à granularité adaptative a été conçue, puis **validée sur une capture réseau simulée** (fichier `.pcap`, format libpcap standard, généré via scapy et relu comme le ferait un·e analyste avec Wireshark) :
 
 - **6/6 tentatives de mouvement latéral simulées** (ciblées par reconnaissance, technique SMB/445 vers un contrôleur de domaine) **auraient été autorisées par le réseau hérité**, et sont **toutes bloquées par la segmentation adaptative**.
 - **40/40 flux métier légitimes** (authentification Kerberos, requêtes applicatives vers les bases de données, etc.) **restent fonctionnels** après segmentation.
 
-## 4. Deux défauts de conception trouvés et corrigés grâce à cette validation
+## 4. Trois défauts de conception trouvés et corrigés
 
-Cette section documente honnêtement le processus itératif -- la validation sur trafic réel n'a pas seulement confirmé le bon fonctionnement du projet, elle a activement révélé deux défauts qui seraient passés inaperçus avec une évaluation purement théorique par graphe.
+Cette section documente honnêtement le processus itératif -- la validation sur trafic simulé n'a pas seulement confirmé le bon fonctionnement du projet, elle a révélé les deux premiers défauts, qui seraient passés inaperçus avec une évaluation purement théorique par graphe. Le troisième a été trouvé en relisant les métriques du pipeline.
 
 **Défaut n°1 -- isolement total des actifs critiques.** La première version du moteur de segmentation coupait purement et simplement tout accès aux hôtes en granularité "individuelle" (bases de données, contrôleurs de domaine). La validation pcap a montré que cela bloquait aussi **21 des 40 flux métier légitimes** du test (authentification, requêtes applicatives). **Correction** : ajout d'exceptions point-à-point explicites (`LEGITIMATE_TYPE_FLOWS_WITH_PORTS`), n'ouvrant que les flux correspondant à un besoin métier reconnu.
 
 **Défaut n°2 -- confusion de port au sein d'un type légitime.** Cette première correction autorisait la connexion dès que la **paire de types** d'hôtes était légitime (ex. poste utilisateur vers contrôleur de domaine, nécessaire pour Kerberos), sans vérifier le **port**. Une attaque de mouvement latéral utilisant SMB (port 445) vers le même contrôleur de domaine devenait alors indiscernable, au niveau du graphe, d'une authentification Kerberos (port 88) légitime. **Correction** : la fonction `is_legitimate_flow()` vérifie désormais le port exact, pas seulement le type d'hôte, pour toute connexion impliquant un actif en granularité individuelle.
 
-Ces deux défauts illustrent une limite générale des évaluations purement graphiques (par type/segment) : elles peuvent donner une fausse impression de sécurité tant qu'elles ne sont pas confrontées à des flux réels, port par port.
+**Défaut n°3 -- une segmentation qui ajoutait des connexions.** En relançant le pipeline, le rayon de compromission direct, présenté comme la métrique principale, *augmentait* après segmentation (14,91 → 33,09). Deux causes : (1) le graphe segmenté était construit sur toutes les paires d'hôtes que la politique autorisait, au lieu de filtrer les connexions du réseau hérité, et les postes utilisateurs, placés dans un même segment « large », y étaient tous reliés entre eux ; (2) le réseau hérité ne reliait que 3 hôtes tirés au hasard de chaque côté entre deux zones routées, contrairement à sa description (« passerelles larges »), si bien que la plupart des flux métier légitimes n'y étaient pas possibles. **Correction** : passerelles inter-zones réellement larges dans le réseau hérité ; politique appliquée comme un **filtre** (une connexion n'est conservée que si elle existait déjà et que la politique l'autorise) ; trafic poste à poste interdit. Résultat : rayon direct 31,04 → 19,57 (−37 %), 32,3 → 12,0 depuis un poste utilisateur ; résultats pcap inchangés (6/6 bloqués, 40/40 préservés). Trois tests de non-régression vérifient que le graphe segmenté est inclus dans le graphe hérité, qu'aucun lien poste à poste ne subsiste, et que le rayon direct baisse.
+
+Le rayon des serveurs applicatifs (43,4) et des contrôleurs de domaine (35) ne baisse pas : ils servent légitimement tous les postes. Leur protection repose sur le filtrage par port, que le graphe agrégé par type d'hôte ne représente pas -- d'où l'importance de la validation pcap.
+
+Ces trois défauts illustrent une limite générale des évaluations purement graphiques (par type/segment) : elles peuvent donner une fausse impression de sécurité tant qu'elles ne sont pas confrontées à des flux réels, port par port.
 
 ## 5. Limite assumée : rayon de compromission "transitif"
 
-Le rayon de compromission par composante connexe complète (accessible en supposant qu'un attaquant puisse pivoter librement à travers chaque hôte intermédiaire) reste élevé dans les deux configurations, car des flux métier légitimes relient nécessairement les segments entre eux. C'est une limite documentée dans la littérature (Basta et al., 2021), qui la résout avec un **second graphe dédié** : un graphe d'attaque pondéré par l'exploitabilité réelle de chaque saut. Ce projet ne modélise pas ce second graphe -- c'est pourquoi le **rayon de compromission direct** (voisinage immédiat, directement piloté par une règle de pare-feu) est utilisé comme métrique principale, et pourquoi la validation par capture réseau réelle (section 3) complète le tableau avec des résultats directement actionnables.
+Le rayon de compromission par composante connexe complète (accessible en supposant qu'un attaquant puisse pivoter librement à travers chaque hôte intermédiaire) reste élevé dans les deux configurations, car des flux métier légitimes relient nécessairement les segments entre eux. C'est une limite documentée dans la littérature (Basta et al., 2021), qui la résout avec un **second graphe dédié** : un graphe d'attaque pondéré par l'exploitabilité réelle de chaque saut. Ce projet ne modélise pas ce second graphe -- c'est pourquoi le **rayon de compromission direct** (voisinage immédiat, directement piloté par une règle de pare-feu) est utilisé comme métrique principale, et pourquoi la validation par capture réseau (section 3) complète le tableau avec des résultats directement actionnables.
 
 ## 6. Portée et limites assumées
 
